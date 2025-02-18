@@ -53,7 +53,8 @@ target_link_libraries(Projeto_Final
         hardware_adc
         hardware_clocks
         hardware_i2c
-        hardware_pio)
+        hardware_pio
+        hardware_timer)
 
 # Add the standard include files to the build
 target_include_directories(Projeto_Final PRIVATE
