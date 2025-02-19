@@ -1,6 +1,5 @@
 //-----BIBLIOTECAS-----
 #include <stdio.h>
-#include <math.h>
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
 #include "hardware/clocks.h"
@@ -22,6 +21,7 @@
 #define PINO_DISPLAY_SDA 14
 #define PINO_DISPLAY_SCL 15
 #define ALTURA_BARRA_TELA 60
+#define INTENS_LEDS 200
 
 //-----VARIÁVEIS GLOBAIS-----
 // Definição de pixel GRB
@@ -40,6 +40,17 @@ uint variavel_maquina_de_estado;
 static volatile bool estado_botao_A = false;
 static volatile uint32_t tempo_passado = 0;
 
+uint8_t matriz_leds_escutando[8][5] = {
+	{4, 6, 12, 18, 20},
+	{3, 5, 7, 11, 19},
+	{2, 6, 8, 10, 14},
+	{1, 7, 9, 13, 15},
+	{0, 8, 12, 16, 24},
+	{9, 11, 15, 17, 23},
+	{10, 14, 16, 18, 22},
+	{5, 13, 17, 19, 21}
+}, num_frames_mle = 0;
+
 uint8_t coord_x_barra[10] = {4, 16, 28, 40, 52, 64, 76, 88, 100, 112};
 uint8_t barras_exibidas[17] = {10, 10, 10, 10, 10, 10, 10, 10, 10, 10};
 
@@ -51,11 +62,13 @@ void atribuir_cor_ao_led(const uint indice, const uint8_t r, const uint8_t g, co
 void limpar_o_buffer(void);
 void escrever_no_buffer(void);
 
+void apresentacao_tela(uint ordem);
 void desenhar_barra(uint8_t x, uint8_t porcentagem);
 void funcao_de_interrupcao(uint pino, uint32_t evento);
 void gravacao_do_som(void);
 void inicializacao_do_display(void);
 void inicializacao_dos_pinos(void);
+void manipulacao_matriz_leds(uint evento);
 void movimentacao_da_fila(uint8_t porcentagem);
 bool tratamento_debounce(void);
 
@@ -68,9 +81,12 @@ int main(void){
     gpio_set_irq_enabled_with_callback(PINO_BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &funcao_de_interrupcao);
 
     while(true){
+		apresentacao_tela(2);
         if(estado_botao_A){
             gravacao_do_som();
 			estado_botao_A = !estado_botao_A;
+			apresentacao_tela(2);
+			sleep_ms(2000);
         }
     }
 
@@ -127,6 +143,25 @@ void escrever_no_buffer(void){
 	sleep_us(100); // Espera 100us, sinal de RESET do datasheet.
 }
 
+
+void apresentacao_tela(uint ordem){
+	ssd1306_fill(&ssd, false);
+
+	switch(ordem){
+		case 1:
+			ssd1306_draw_string(&ssd, "DETECTOR DE", 30, 20);
+			ssd1306_draw_string(&ssd, "SOM ATIVADO", 30, 40);
+			break;
+		case 2:
+			ssd1306_draw_string(&ssd, "SOM ATIPICO", 20, 10);
+			ssd1306_draw_string(&ssd, "DETECTADO", 30, 30);
+			ssd1306_draw_string(&ssd, "NO AMBIENTE", 20, 50);
+			break;
+	}
+
+	ssd1306_send_data(&ssd);
+}
+
 void desenhar_barra(uint8_t x, uint8_t porcentagem){
 
 	uint16_t index = 0;
@@ -166,18 +201,21 @@ void funcao_de_interrupcao(uint pino, uint32_t evento){
 void gravacao_do_som(void){
 	bool controle_loop = true;
 	float perturbacao_sonora;
+	uint contador = 0;
+
+	ssd1306_fill(&ssd, true);
+	ssd1306_send_data(&ssd);
 
     while(controle_loop){
 		int som_captado = adc_read();
 		perturbacao_sonora = 100 * som_captado / 4096;
 		movimentacao_da_fila(perturbacao_sonora);
 		sleep_ms(200);
+		manipulacao_matriz_leds(1);
 		desenhar_barra(4, perturbacao_sonora);
-		printf("Som captado: %d\nPerturbacao: %.3f%%\n\n", som_captado, perturbacao_sonora);
 		if(perturbacao_sonora >= LIMITE_SOM)
 			controle_loop = !controle_loop;
 	}
-	printf("\nFim do loop.\n");
 }
 
 void inicializacao_do_display(void){
@@ -205,6 +243,23 @@ void inicializacao_dos_pinos(void){
     gpio_set_function(PINO_DISPLAY_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(PINO_DISPLAY_SDA);
     gpio_pull_up(PINO_DISPLAY_SCL);
+}
+
+void manipulacao_matriz_leds(uint evento){
+	switch(evento){
+		case 1:
+			printf("Evento 1: Matriz de LEDs.\n");
+			limpar_o_buffer();
+			escrever_no_buffer();
+			for(uint i = 0; i < 5; i++){
+				atribuir_cor_ao_led(matriz_leds_escutando[num_frames_mle][i], 0, 0, INTENS_LEDS);
+			}
+			escrever_no_buffer();
+			num_frames_mle++;
+			if(num_frames_mle == 8)
+				num_frames_mle = 0;
+			break;
+	}
 }
 
 void movimentacao_da_fila(uint8_t porcentagem){
