@@ -40,7 +40,7 @@ uint variavel_maquina_de_estado;
 
 static volatile bool estado_botao_A = false, estado_botao_B = false;
 static volatile uint32_t tempo_passado = 0;
-static volatile uint limite_som = 100;
+static volatile uint limite_som = 95;
 static volatile uint mestre = 0;
 int escolha_menu_1 = 1;
 bool controle_loop_menu_1 = true, controle_loop_sensibilidade = true;
@@ -54,7 +54,8 @@ uint8_t matriz_leds_escutando[8][5] = {
 	{9, 11, 15, 17, 23},
 	{10, 14, 16, 18, 22},
 	{5, 13, 17, 19, 21}
-}, num_frames_mle = 0;
+};
+uint8_t num_frames_mle = 0;
 
 uint8_t coord_x_barra[10] = {14, 22, 35, 43, 56, 64, 77, 85, 98, 106};
 uint8_t barras_exibidas[10] = {10, 10, 10, 10, 10, 10, 10, 10, 10, 10};
@@ -68,7 +69,7 @@ void limpar_o_buffer(void);
 void escrever_no_buffer(void);
 
 void alterar_sensibilidade_detector(void);
-void apresentacao_tela(uint ordem);
+void apresentacao_tela(uint ordem, char mensagem_extra[]);
 void desenhar_barra(uint8_t x, uint8_t porcentagem);
 void funcao_de_interrupcao(uint pino, uint32_t evento);
 void gravacao_do_som(void);
@@ -94,7 +95,8 @@ int main(void){
 		switch(mestre){
 			case 0: // Apresentação da tela inicial.
 				printf("Entrando na funcao apresentacao_tela(1) --- mestre [%d]\n", mestre);
-				apresentacao_tela(1);
+				manipulacao_matriz_leds(2); // Ativa o rosto feliz.
+				apresentacao_tela(1, "00");
 				break;
 			case 1: // Menu inicial.
 				if(controle_loop_menu_1){
@@ -111,6 +113,12 @@ int main(void){
 			case 3: // Rotina de captura e monitoramento do som ambiente.
 				printf("Entrando na funcao gravacao_do_som() --- mestre [%d]\n", mestre);
 				gravacao_do_som();
+				mestre = 4;
+				break;
+			case 4: // Detecção de som atípico.
+				printf("Entrando na funcao de deteccao de som atipico --- mestre [%d]\n", mestre);
+				manipulacao_matriz_leds(3);
+				apresentacao_tela(2, "00");
 				break;
 		}
     }
@@ -170,7 +178,6 @@ void escrever_no_buffer(void){
 
 //==================================================
 void alterar_sensibilidade_detector(void){
-	int nivel = 5;
 	char mensagem[4];
 	controle_loop_sensibilidade = true;
 
@@ -179,38 +186,48 @@ void alterar_sensibilidade_detector(void){
 	printf("Dentro da funcao alterar_sensibilidade_detector()\n");
 
 	while(controle_loop_sensibilidade){
-		ssd1306_fill(&ssd, false);
-		ssd1306_draw_string(&ssd, "SENSIBILIDADE", 4, 10);
 		itoa(limite_som, mensagem, 10);
-		ssd1306_draw_string(&ssd, mensagem, 50, 30);
-		ssd1306_draw_string(&ssd, "BOTAO B", 4, 50);
-		ssd1306_send_data(&ssd);
+		apresentacao_tela(3, mensagem);
 		if(adc_read() <= 100){
 			limite_som -= 5;
 			if(limite_som < 5)
-				limite_som = 100;
+				limite_som = 95;
 		}else if(adc_read() >= 4000){
 			limite_som += 5;
-			if(limite_som > 100)
+			if(limite_som > 95)
 				limite_som = 5;
 		}
 		sleep_ms(100);
 	}
 }
 
-void apresentacao_tela(uint ordem){
+void apresentacao_tela(uint ordem, char mensagem_extra[]){
 	ssd1306_fill(&ssd, false);
 
 	switch(ordem){
 		case 1:
-			ssd1306_draw_string(&ssd, "DETECTOR DE", 20, 10);
-			ssd1306_draw_string(&ssd, "SOM ATIVADO", 20, 30);
-			ssd1306_draw_string(&ssd, "Pres botao A", 20, 50);
+			ssd1306_draw_string(&ssd, "DETECTOR DE SOM", 5, 10);
+			ssd1306_draw_string(&ssd, "Press Botao A", 5, 50);
 			break;
 		case 2:
 			ssd1306_draw_string(&ssd, "SOM ATIPICO", 20, 10);
 			ssd1306_draw_string(&ssd, "DETECTADO", 30, 30);
-			ssd1306_draw_string(&ssd, "NO AMBIENTE", 20, 50);
+			ssd1306_draw_string(&ssd, "Press Botao A", 5, 50);
+			break;
+		case 3:
+			ssd1306_draw_string(&ssd, "SENSIBILIDADE", 5, 10);
+			ssd1306_draw_string(&ssd, mensagem_extra, 50, 30);
+			ssd1306_draw_string(&ssd, "Press Botao B", 5, 50);
+			break;
+		case 4:
+			ssd1306_draw_string(&ssd, "MENU OPCOES", 5, 10);
+			ssd1306_draw_string(&ssd, "Ativar detector", 5, 30);
+			ssd1306_draw_string(&ssd, "Press Botao A", 5, 50);
+			break;
+		case 5:
+			ssd1306_draw_string(&ssd, "MENU OPCOES", 4, 10);
+			ssd1306_draw_string(&ssd, "Sensibilidade", 10, 30);
+			ssd1306_draw_string(&ssd, "Press Botao A", 4, 50);
 			break;
 	}
 
@@ -262,6 +279,11 @@ void funcao_de_interrupcao(uint pino, uint32_t evento){
 						mestre = 2;
 					}
 					break;
+				case 4:
+					mestre = 0;
+					controle_loop_menu_1 = true;
+					controle_loop_sensibilidade = true;
+					break;
 			}
 			estado_botao_A = !estado_botao_A;
         }
@@ -281,6 +303,7 @@ void gravacao_do_som(void){
 	bool controle_loop = true;
 	float perturbacao_sonora;
 	uint contador = 0;
+	int som_captado;
 
 	ssd1306_fill(&ssd, true);
 	ssd1306_send_data(&ssd);
@@ -288,12 +311,11 @@ void gravacao_do_som(void){
 	adc_select_input(2);
 
     while(controle_loop){
-		int som_captado = adc_read() - 2048;
+		som_captado = adc_read() - 2048;
 		if(som_captado < 0)
 			som_captado *= (-1);
 		perturbacao_sonora = 100 * som_captado / 2048;
 		movimentacao_da_fila(perturbacao_sonora);
-		//sleep_ms(200);
 		manipulacao_matriz_leds(1);
 		desenhar_barra(4, perturbacao_sonora);
 		if(perturbacao_sonora >= limite_som)
@@ -335,11 +357,12 @@ void inicializacao_dos_pinos(void){
 }
 
 void manipulacao_matriz_leds(uint evento){
+	uint8_t olhos_azuis[2] = {21, 23}, nariz_amarelo = 12;
 	limpar_o_buffer();
 	escrever_no_buffer();
 
 	switch(evento){
-		case 1:
+		case 1: // Animação na matriz de LEDs para o som sendo captado.
 			for(uint i = 0; i < 5; i++){
 				atribuir_cor_ao_led(matriz_leds_escutando[num_frames_mle][i], 0, 0, INTENS_LEDS);
 			}
@@ -349,7 +372,26 @@ void manipulacao_matriz_leds(uint evento){
 			if(num_frames_mle == 8)
 				num_frames_mle = 0;
 			break;
+		case 2: // Carinha feliz.
+			uint8_t boca_vermelha_1[5] = {1, 2, 3, 5, 9};
+			for(uint i = 0; i < 2; i++)
+				atribuir_cor_ao_led(olhos_azuis[i], 0, 0, INTENS_LEDS);
+			atribuir_cor_ao_led(nariz_amarelo, INTENS_LEDS, INTENS_LEDS, 0);
+			for(uint i = 0; i < 5; i++)
+				atribuir_cor_ao_led(boca_vermelha_1[i], INTENS_LEDS, 0, 0);
+			escrever_no_buffer();
+			break;
+		case 3: // Carinha triste.
+			uint8_t boca_vermelha_2[5] = {0, 4, 6, 7, 8};
+			for(uint i = 0; i < 2; i++)
+				atribuir_cor_ao_led(olhos_azuis[i], 0, 0, INTENS_LEDS);
+			atribuir_cor_ao_led(nariz_amarelo, INTENS_LEDS, INTENS_LEDS, 0);
+			for(uint i = 0; i < 5; i++)
+				atribuir_cor_ao_led(boca_vermelha_2[i], INTENS_LEDS, 0, 0);
+			escrever_no_buffer();
+			break;
 	}
+	sleep_ms(100); // Delay necessário para uma animação fluida na matriz de LEDs.
 }
 
 void menu_opcoes(void){
@@ -358,18 +400,10 @@ void menu_opcoes(void){
 	while(controle_loop_menu_1){
 		switch(escolha_menu_1){
 			case 1:
-				ssd1306_fill(&ssd, false);
-				ssd1306_draw_string(&ssd, "MENU OPCOES", 4, 10);
-				ssd1306_draw_string(&ssd, "Ativar detector", 4, 30);
-				ssd1306_draw_string(&ssd, "BOTAO A", 4, 50);
-				ssd1306_send_data(&ssd);
+				apresentacao_tela(4, "00");
 				break;
 			case 2:
-				ssd1306_fill(&ssd, false);
-				ssd1306_draw_string(&ssd, "MENU OPCOES", 4, 10);
-				ssd1306_draw_string(&ssd, "Sensibilidade", 10, 30);
-				ssd1306_draw_string(&ssd, "BOTAO A", 4, 50);
-				ssd1306_send_data(&ssd);
+				apresentacao_tela(5, "00");
 				break;
 		}
 
