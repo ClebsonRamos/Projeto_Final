@@ -41,12 +41,12 @@ PIO maquina_pio;
 uint variavel_maquina_de_estado;
 
 // Variáveis globais de controle geral do sistema.
-static volatile bool estado_botao_A = false; // Variável para registrar se o botão A foi pressionado.
+static volatile bool estado_botao_A = true; // Variável para registrar se o botão A foi pressionado.
 static volatile bool estado_botao_B = false; // Variável para registrar se o botão B foi pressionado.
 static volatile uint32_t tempo_passado = 0; // Variável para registrar o tempo passado para tratamento do bounce.
-static volatile int limite_som = 95; // Variável para registrar o limite de som (em % da amplitude do mic) que, caso ultrapassado, dispararia o alarme.
+static volatile int limite_som = 50; // Variável para registrar o limite de som (em % da amplitude do mic) que, caso ultrapassado, dispararia o alarme.
 static volatile uint mestre = 0; // Variável que controla toda a sequência de funcionamento do código.
-int escolha_menu_1 = 1; // Variável que registra a opção escolhida no menu principal.
+int escolha_menu = 1; // Variável que registra a opção escolhida no menu principal.
 bool controle_loop_menu_opcoes = true; // Controla a permanência no loop do menu de configuração.
 bool controle_loop_sensibilidade = true; // Controla a permanência no loop de ajuste de sensibilidade do detector de som.
 bool controle_alarme_pwm = true; // Controla o loop de permanência do acionamento do alarme.
@@ -81,8 +81,8 @@ void acionamento_do_alarme(void);
 void alterar_sensibilidade_detector(void);
 void apresentacao_tela(uint ordem, char mensagem_extra[]);
 void desenhar_barra(uint8_t x, uint8_t porcentagem);
+void deteccao_do_som(void);
 void funcao_de_interrupcao(uint pino, uint32_t evento);
-void gravacao_do_som(void);
 void inicializacao_do_display(void);
 void inicializacao_dos_pinos(void);
 void manipulacao_matriz_leds(uint evento);
@@ -108,15 +108,14 @@ int main(void){
 				apresentacao_tela(1, "00"); // Tela inicial. Detector de som.
 				break;
 			case 1: // ESTÁGIO 1: Menu inicial.
-				//controle_loop_menu_opcoes = true;
 				menu_opcoes(); // Função para gerenciar o menu inicial.
 				// A variável escolha_menu_1 registra a escolha da opção do menu inicial.
 				// Valor 1 - Prossegue para a funcionalidade principal; Valor 2 - Acessa a função para alterar a sensibilidade do detector.
-				if(escolha_menu_1 == 2)
+				if(escolha_menu == 2)
 					alterar_sensibilidade_detector();
 				break;
 			case 2: // ESTÁGIO 2: Rotina de captura e monitoramento do som ambiente.
-				gravacao_do_som(); // Entra na função para captação do som do ambiente pelo microfone.
+				deteccao_do_som(); // Entra na função para captação do som do ambiente pelo microfone.
 				mestre = 3; // Altera o registro do estágio do programa para o estágio 3.
 				break;
 			case 3: // ESTÁGIO 4: Detecção de som atípico.
@@ -248,6 +247,11 @@ void apresentacao_tela(uint ordem, char mensagem_extra[]){
 			ssd1306_draw_string(&ssd, "Sensibilidade", 15, 30);
 			ssd1306_draw_string(&ssd, "Press Botao A", 15, 50);
 			break;
+		case 6:
+			ssd1306_draw_string(&ssd, "ATIVANDO O", 25, 10);
+			ssd1306_draw_string(&ssd, "DETECTOR", 33, 30);
+			ssd1306_draw_string(&ssd, "DE SOM", 40, 50);
+			break;
 	}
 
 	ssd1306_send_data(&ssd); // Envia os dados para o display.
@@ -304,44 +308,17 @@ void desenhar_barra(uint8_t x, uint8_t porcentagem){
     ssd1306_send_data(&ssd); // Envia os dados para o display SSD1306.
 }
 
-// Função de rotina das interrupções habilitadas para os botões A e B.
-void funcao_de_interrupcao(uint pino, uint32_t evento){
-    if(pino == PINO_BOTAO_A && !estado_botao_A){
-        bool resultado_debounce = tratamento_debounce();
-        if(resultado_debounce){
-            estado_botao_A = !estado_botao_A;
-			switch(mestre){
-				case 0:
-					mestre = 1;
-					controle_loop_menu_opcoes = true;
-					break;
-				case 1:
-					controle_loop_menu_opcoes = false;
-					controle_loop_sensibilidade = false;
-					if(escolha_menu_1 == 1)
-						mestre = 2;
-					break;
-			}
-			estado_botao_A = !estado_botao_A;
-        }
-    }else if(pino == PINO_BOTAO_B && !estado_botao_B){
-		bool resultado_debounce = tratamento_debounce();
-		if(resultado_debounce){
-			estado_botao_B = !estado_botao_B;
-			if(mestre == 3){
-				mestre = 0;
-				controle_alarme_pwm = false;
-			}
-			estado_botao_B = !estado_botao_B;
-		}
-	}
-}
-
 // Função para a funcionalidade principal do programa: o monitoramento do nível de som ambiente.
-void gravacao_do_som(void){
+void deteccao_do_som(void){
 	bool controle_loop = true;
 	float perturbacao_sonora;
 	int som_captado;
+
+	estado_botao_A = false; // Alteração do estado do botão A para evitar acionamentos acidentais e atrapalhar o fluxo do programa.
+
+	// Ativa a contagem regressiva exibida na matriz de lEDs antes do acionamento da captação de sons pelo dispositivo.
+	apresentacao_tela(6, "00");
+	manipulacao_matriz_leds(4);
 
 	ssd1306_fill(&ssd, true); // Limpa o display SSD1306.
 	ssd1306_send_data(&ssd); // Envia os dados para o display SSD1306.
@@ -362,6 +339,45 @@ void gravacao_do_som(void){
 	}
 	limpar_o_buffer(); // Limpa o buffer da matriz de LEDs.
 	escrever_no_buffer(); // Escreve no buffer da matriz de LEDs.
+	estado_botao_B = true; // Alteração do estado do botão B para interrupção do alarme sonoro via rotina de interrupção.
+}
+
+// Função de rotina das interrupções habilitadas para os botões A e B.
+void funcao_de_interrupcao(uint pino, uint32_t evento){
+    if(pino == PINO_BOTAO_A && estado_botao_A){
+        bool resultado_debounce = tratamento_debounce();
+        if(resultado_debounce){
+            //estado_botao_A = !estado_botao_A;
+			switch(mestre){
+				case 0:
+					mestre = 1;
+					controle_loop_menu_opcoes = true;
+					break;
+				case 1:
+					controle_loop_menu_opcoes = false;
+					controle_loop_sensibilidade = false;
+					if(escolha_menu == 1){
+						mestre = 2;
+						// Alteração dos estados dos botões A e B para evitar acionamentos acidentais e interromper o funcionamento do código.
+						estado_botao_A = false;
+						estado_botao_B = false;
+					}
+					break;
+			}
+			//estado_botao_A = !estado_botao_A;
+        }
+    }else if(pino == PINO_BOTAO_B && estado_botao_B){
+		bool resultado_debounce = tratamento_debounce();
+		if(resultado_debounce){
+			//estado_botao_B = !estado_botao_B;
+			if(mestre == 3){
+				mestre = 0;
+				controle_alarme_pwm = false;
+			}
+			estado_botao_A = true; // Habilita o botão A para uso durante as opções do menu principal.
+			estado_botao_B = false; // Desabilita o uso do botão B para evitar acionamentos acidentais.
+		}
+	}
 }
 
 // Função para inicialização do display SSD1306.
@@ -449,6 +465,19 @@ void manipulacao_matriz_leds(uint evento){
 			}
 			escrever_no_buffer();
 			break;
+		case 4: // Contagem regressiva.
+			// Matriz para exibição dos números da contagem regressiva na matriz de LEDs.
+			uint8_t contagem_regressiva[4][12] = {
+				{1, 2, 3, 8, 11, 12, 18, 21, 22, 23}, {1, 2, 3, 6, 11, 12, 13, 18, 21, 22, 23},
+				{1, 2, 3, 7, 12, 16, 17, 22}, {1, 2, 3, 6, 8, 11, 13, 16, 18, 21, 22, 23}}, tamanho[4] = {10, 11, 8, 12};
+			for(uint i = 0; i < 4; i++){
+				limpar_o_buffer();
+				for(uint j = 0; j < tamanho[i]; j++)
+					atribuir_cor_ao_led(contagem_regressiva[i][j], 0, 0, INTENS_LEDS);
+				escrever_no_buffer();
+				sleep_ms(1000);
+			}
+			break;
 	}
 }
 
@@ -457,12 +486,12 @@ void menu_opcoes(void){
 	adc_select_input(0);
 
 	// Necessária inicialização com o valor 1 ou 2 para evitar bug inicial de não aparecer as opções na tela.
-	escolha_menu_1 = 1;
+	escolha_menu = 1;
 
 	controle_loop_menu_opcoes = true;
 
 	while(controle_loop_menu_opcoes){
-		switch(escolha_menu_1){ // Exibe a mensagem da opção na tela SSD1306 em função do valor manipulado pelo usuário via joystick.
+		switch(escolha_menu){ // Exibe a mensagem da opção na tela SSD1306 em função do valor manipulado pelo usuário via joystick.
 			case 1: // Opção "Ativar detector".
 				apresentacao_tela(4, "00");
 				break;
@@ -472,13 +501,13 @@ void menu_opcoes(void){
 		}
 		// Alteração do valor que representa a opção do menu escolhida pelo usuário.
 		if(adc_read() <= 100){
-			escolha_menu_1--;
-			if(escolha_menu_1 < 1)
-				escolha_menu_1 = 2;
+			escolha_menu--;
+			if(escolha_menu < 1)
+				escolha_menu = 2;
 		}else if(adc_read() >= 4000){
-			escolha_menu_1++;
-			if(escolha_menu_1 > 2)
-				escolha_menu_1 = 1;
+			escolha_menu++;
+			if(escolha_menu > 2)
+				escolha_menu = 1;
 		}
 		sleep_ms(100);
 	}
