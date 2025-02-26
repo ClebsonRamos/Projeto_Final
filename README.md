@@ -1,8 +1,10 @@
 Projeto Final: SISTEMA DE ALARME COM DETECÇÃO DE RUÍDO EXTERNO
 
+
 DESCRIÇÃO
 
 O presente projeto trata-se de um sistema de segurança com detecção de ruído externo utilizando um microfone. Quando ativado, o sistema realiza o monitoramento contínuo do ruído externo e dispara um alarme sonoro utilizano um buzzer quando detecta um som com intensidade superior ou igual ao nível de ruído configurado no sistema. O usuário pode ajustar o limite de intensidade de ruído que irá disparar o alarme sonoro. A intensidade do som captado é mostrada em uma tela OLED SSD1306 através de barras verticais que variam de altura conforme a intensidade do som captado varia. Em paralelo ao monitoramento do som, uma animação é exibida em uma matriz de LEDs WS2812 com 25 LEDs individuais, indicando que o equipamento está em pleno funcionamento.
+
 
 COMPONENTES
 
