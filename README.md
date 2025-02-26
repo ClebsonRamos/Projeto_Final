@@ -1,6 +1,7 @@
 *Projeto Final: Sistema de Alarme com Detecção de Ruído Externo*
 
-*Descrição*\n
+*Descrição*
+
 Este projeto consiste em um sistema de segurança com detecção de ruído externo utilizando um microfone. Quando ativado, o sistema realiza o monitoramento contínuo do ruído externo e dispara um alarme sonoro utilizando um buzzer quando detecta um som com intensidade superior ou igual ao nível de ruído configurado no sistema.
 
 *Componentes*
